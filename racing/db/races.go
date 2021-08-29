@@ -2,8 +2,10 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"github.com/golang/protobuf/ptypes"
 	_ "github.com/mattn/go-sqlite3"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +20,8 @@ type RacesRepo interface {
 
 	// List will return a list of races.
 	List(filter *racing.ListRacesRequestFilter, orderby string) ([]*racing.Race, error)
+	// Get will return a race.
+	Get(name string) (*racing.Race, error)
 }
 
 type racesRepo struct {
@@ -129,4 +133,36 @@ func (m *racesRepo) scanRaces(
 	}
 
 	return races, nil
+}
+
+func (r *racesRepo) Get(name string) (*racing.Race, error) {
+	var (
+		err   error
+		query string
+		args  []interface{}
+	)
+
+	query = getRaceQueries()[racesList]
+
+	matchid := regexp.MustCompile(`[\d]+`)
+	if matchid.MatchString(name) == false {
+		return nil, errors.New("Unable to parse race id")
+	}
+
+	query += " WHERE id = " + matchid.FindAllString(name, -1)[0]
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	races, err := r.scanRaces(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(races) == 0 {
+		return nil, errors.New("No matching race id")
+	}
+	return races[0], nil
 }
